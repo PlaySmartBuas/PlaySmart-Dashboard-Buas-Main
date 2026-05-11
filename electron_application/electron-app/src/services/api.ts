@@ -138,11 +138,11 @@ export interface ValorantMatchHistoryResponse {
   status: number;
 }
 
-export type GameMode = 
-  | "competitive" 
-  | "unrated" 
-  | "deathmatch" 
-  | "spikerush" 
+export type GameMode =
+  | "competitive"
+  | "unrated"
+  | "deathmatch"
+  | "spikerush"
   | "swiftplay"
   | "escalation"
   | "teamdeathmatch"
@@ -202,6 +202,13 @@ export const toolkitAPI = {
   },
 };
 
+export const sessionContextAPI = {
+  saveContext: async (payload: { riot_id: string; game: string; user_id?: number }) => {
+    const response = await api.post('/session/context', payload);
+    return response.data;
+  },
+};
+
 // Coach API
 export const coachAPI = {
   getConfig: async () => {
@@ -234,7 +241,7 @@ export const valorantAPI = {
    * Get Valorant account info by Riot ID (format: name#tag)
    */
   getAccountInfo: async (
-    riotId: string, 
+    riotId: string,
     force: boolean = false
   ): Promise<ValorantAccountResponse> => {
     try {
@@ -243,7 +250,7 @@ export const valorantAPI = {
       }
 
       const [name, tag] = riotId.split('#');
-      
+
       if (!name || !tag) {
         throw new Error('Invalid Riot ID format. Both name and tag are required');
       }
@@ -315,7 +322,7 @@ export const valorantAPI = {
       }
 
       const [name, tag] = riotId.split('#');
-      
+
       if (!name || !tag) {
         throw new Error('Invalid Riot ID format. Both name and tag are required');
       }
@@ -323,7 +330,7 @@ export const valorantAPI = {
       const response = await api.get<ValorantMatchHistoryResponse>(
         `/valorant/matches/${region}/${name}/${tag}`,
         {
-          params: { 
+          params: {
             mode,
             size: Math.min(size, 10) // API max is 10
           }
@@ -338,7 +345,7 @@ export const valorantAPI = {
 
 
 
-    
+
     }
   },
 };
@@ -368,5 +375,5 @@ export const valorantStorage = {
   }
 };
 
-export {BASE_URL as API_BASE_URL};
+export { BASE_URL as API_BASE_URL };
 export default api;

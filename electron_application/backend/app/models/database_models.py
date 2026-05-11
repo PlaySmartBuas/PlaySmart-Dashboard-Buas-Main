@@ -26,6 +26,7 @@ class UsersDB(Base):
         created_at (datetime): Record creation timestamp.
         updated_at (datetime, optional): Record update timestamp.
     """
+
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=False)
@@ -34,6 +35,7 @@ class UsersDB(Base):
     hashed_password = Column(String, nullable=False)
     role = Column(String, nullable=False)
     team = Column(String, nullable=False)
+    riot_id = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -57,6 +59,7 @@ class Feedback(Base):
         game (str): Game name ('valorant' or 'lol').
         created_at (datetime): Record creation timestamp.
     """
+
     __tablename__ = "feedback"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -88,6 +91,7 @@ class ToolkitConfig(Base):
         created_at (datetime): Record creation timestamp.
         updated_at (datetime, optional): Record update timestamp.
     """
+
     __tablename__ = "toolkit_config"
 
     id = Column(Integer, primary_key=True, index=True)

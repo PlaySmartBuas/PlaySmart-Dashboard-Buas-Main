@@ -56,6 +56,7 @@ def create_user(db: Session, user: UserCreate) -> UsersDB:
         hashed_password=hashed_password,
         role=user.role,
         team=user.team,
+        riot_id=user.riot_id,
     )
 
     db.add(db_user)
@@ -63,6 +64,18 @@ def create_user(db: Session, user: UserCreate) -> UsersDB:
     db.refresh(db_user)
 
     return db_user
+
+
+def update_user_riot_id(db: Session, user_id: int, riot_id: str) -> Optional[UsersDB]:
+    """Update a user's Riot ID."""
+    user = db.query(UsersDB).filter(UsersDB.id == user_id).first()
+    if not user:
+        return None
+
+    user.riot_id = riot_id
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 def authenticate_user(db: Session, username: str, password: str) -> Optional[UsersDB]:

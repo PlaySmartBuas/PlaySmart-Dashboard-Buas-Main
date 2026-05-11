@@ -11,6 +11,7 @@ export interface User {
   email: string;
   role: UserRole;
   team: string;
+  riot_id?: string | null;
   created_at?: string;
 }
 
@@ -31,4 +32,5 @@ export interface SignUpData {
   password: string;
   role: string;
   team: string;
+  riot_id?: string;
 }

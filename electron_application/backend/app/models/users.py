@@ -16,6 +16,7 @@ class UserRole(str, Enum):
     """
     Enumeration of possible user roles.
     """
+
     PLAYER = "player"
     COACH = "coach"
 
@@ -33,10 +34,12 @@ class UserBase(BaseModel):
         role (UserRole): Role of the user (player or coach).
         team (str): Team the user belongs to.
     """
+
     username: str
     email: EmailStr
     role: UserRole
     team: str
+    riot_id: Optional[str] = None
 
 
 # -------------------------------
@@ -49,6 +52,7 @@ class UserCreate(UserBase):
     Attributes:
         password (str): Plain-text password for the user.
     """
+
     password: str
 
 
@@ -63,6 +67,7 @@ class User(UserBase):
         id (int): Unique user ID.
         created_at (Optional[datetime]): Account creation timestamp.
     """
+
     id: int
     created_at: Optional[datetime] = None
 
@@ -81,6 +86,7 @@ class UserLogin(BaseModel):
         username (str): Username of the user.
         password (str): Plain-text password.
     """
+
     username: str
     password: str
 
@@ -97,6 +103,7 @@ class Token(BaseModel):
         token_type (str): Type of token (e.g., "bearer").
         user (User): User information associated with the token.
     """
+
     access_token: str
     token_type: str
     user: User

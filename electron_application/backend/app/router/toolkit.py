@@ -4,6 +4,9 @@ from sqlalchemy.orm import Session
 import subprocess
 import os
 import sys
+import time
+import ctypes
+import keyboard
 
 from app.database import get_db
 from app.crud import toolkit as toolkit_crud
@@ -16,6 +19,34 @@ router = APIRouter()
 toolkit_process = None
 obs_process = None
 tobii_process = None
+TOOLKIT_CONSOLE_TITLE = "BGET Toolkit"
+
+
+def _process_status(process):
+    """Return (running, pid) for a tracked subprocess handle."""
+    if not process:
+        return False, None
+
+    poll = process.poll()
+    if poll is not None:
+        return False, None
+
+    return True, process.pid
+
+
+def _focus_toolkit_window() -> bool:
+    """Bring the toolkit console window to the foreground if it exists."""
+    try:
+        hwnd = ctypes.windll.user32.FindWindowW(None, TOOLKIT_CONSOLE_TITLE)
+        if not hwnd:
+            return False
+
+        ctypes.windll.user32.ShowWindow(hwnd, 5)
+        ctypes.windll.user32.SetForegroundWindow(hwnd)
+        time.sleep(0.1)
+        return True
+    except Exception:
+        return False
 
 
 class ToolkitPath(BaseModel):
@@ -158,7 +189,10 @@ async def start_obs(data: OBSPath):
     try:
         # Set working directory to OBS executable's directory
         obs_dir = os.path.dirname(data.obsPath)
-        obs_process = subprocess.Popen([data.obsPath], cwd=obs_dir)
+        obs_process = subprocess.Popen(
+            [data.obsPath],
+            cwd=obs_dir,
+        )
         return {
             "success": True,
             "message": "OBS started successfully",
@@ -196,7 +230,10 @@ async def start_tobii(data: TobiiPath):
     try:
         # Set working directory to Tobii executable's directory
         tobii_dir = os.path.dirname(data.tobiiPath)
-        tobii_process = subprocess.Popen([data.tobiiPath], cwd=tobii_dir)
+        tobii_process = subprocess.Popen(
+            [data.tobiiPath],
+            cwd=tobii_dir,
+        )
         return {
             "success": True,
             "message": "Tobii started successfully",
@@ -227,10 +264,13 @@ async def start_toolkit(data: ToolkitPath):
 
     try:
         if sys.platform == "win32":
+            raw_path = data.batPath.strip()
+            raw_path = raw_path.replace('\\"', "").replace('"', "").replace("'", "")
+            bat_path = os.path.normpath(raw_path)
             toolkit_process = subprocess.Popen(
-                [data.batPath],
+                ["cmd.exe", "/k", "call", bat_path],
                 creationflags=subprocess.CREATE_NEW_CONSOLE,
-                cwd=os.path.dirname(data.batPath),
+                cwd=os.path.dirname(bat_path),
             )
         else:
             toolkit_process = subprocess.Popen([data.batPath], shell=True)
@@ -273,14 +313,101 @@ async def toolkit_status():
     """Check if the toolkit is currently running"""
     global toolkit_process
 
-    if toolkit_process:
-        poll = toolkit_process.poll()
-        if poll is not None:
-            toolkit_process = None
-            return {"running": False}
-        return {"running": True, "pid": toolkit_process.pid}
+    running, pid = _process_status(toolkit_process)
+    if not running:
+        toolkit_process = None
+        return {"running": False}
 
-    return {"running": False}
+    return {"running": True, "pid": pid}
+
+
+@router.get("/obs-status")
+async def obs_status():
+    """Check if OBS is currently running"""
+    global obs_process
+
+    running, pid = _process_status(obs_process)
+    if not running:
+        obs_process = None
+        return {"running": False}
+
+    return {"running": True, "pid": pid}
+
+
+@router.get("/tobii-status")
+async def tobii_status():
+    """Check if Tobii Eye Tracker Manager is currently running"""
+    global tobii_process
+
+    running, pid = _process_status(tobii_process)
+    if not running:
+        tobii_process = None
+        return {"running": False}
+
+    return {"running": True, "pid": pid}
+
+
+@router.get("/apps-status")
+async def apps_status():
+    """Check if OBS, Tobii and toolkit are all currently running"""
+    global toolkit_process, obs_process, tobii_process
+
+    obs_running, obs_pid = _process_status(obs_process)
+    tobii_running, tobii_pid = _process_status(tobii_process)
+    toolkit_running, toolkit_pid = _process_status(toolkit_process)
+
+    if not obs_running:
+        obs_process = None
+    if not tobii_running:
+        tobii_process = None
+    if not toolkit_running:
+        toolkit_process = None
+
+    return {
+        "obs_running": obs_running,
+        "obs_pid": obs_pid,
+        "tobii_running": tobii_running,
+        "tobii_pid": tobii_pid,
+        "toolkit_running": toolkit_running,
+        "toolkit_pid": toolkit_pid,
+        "all_running": obs_running and tobii_running and toolkit_running,
+    }
+
+
+@router.post("/start-session")
+async def start_session():
+    """Start data collection scripts by simulating F7."""
+    global toolkit_process
+
+    toolkit_running, _ = _process_status(toolkit_process)
+    if not toolkit_running:
+        raise HTTPException(
+            status_code=400, detail="Toolkit is not running. Launch apps first."
+        )
+
+    try:
+        _focus_toolkit_window()
+        keyboard.press_and_release("f7")
+        return {"success": True, "message": "Session start triggered"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to send F7: {exc}")
+
+
+@router.post("/stop-session")
+async def stop_session():
+    """Stop data collection scripts by simulating F12."""
+    global toolkit_process
+
+    toolkit_running, _ = _process_status(toolkit_process)
+    if not toolkit_running:
+        return {"success": True, "message": "Toolkit not running"}
+
+    try:
+        _focus_toolkit_window()
+        keyboard.press_and_release("f12")
+        return {"success": True, "message": "Session stop triggered"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to send F12: {exc}")
 
 
 @router.post("/reset-toolkit")

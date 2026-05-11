@@ -19,6 +19,7 @@ const SignUp: React.FC = () => {
     confirmPassword: '',
     role: 'player' as 'player' | 'coach',
     team: '',
+    riot_id: '',
   });
 
   const [error, setError] = useState('');
@@ -60,6 +61,7 @@ const SignUp: React.FC = () => {
         password: formData.password,
         role: formData.role,
         team: formData.team,
+        riot_id: formData.riot_id?.trim() || undefined,
       });
 
       // Show a small success confirmation and redirect to login.
@@ -179,6 +181,18 @@ const SignUp: React.FC = () => {
               className="w-full px-4 py-2.5 bg-gray-900/50 text-white rounded-lg border border-yellow-500/20 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent placeholder-gray-500 font-medium transition-all duration-300"
               placeholder="Team name"
               required
+            />
+          </div>
+
+          <div>
+            <label className="block text-yellow-200 mb-2 text-sm font-bold tracking-wide">Riot ID (optional)</label>
+            <input
+              type="text"
+              name="riot_id"
+              value={formData.riot_id}
+              onChange={handleChange}
+              className="w-full px-4 py-2.5 bg-gray-900/50 text-white rounded-lg border border-yellow-500/20 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent placeholder-gray-500 font-medium transition-all duration-300"
+              placeholder="name#tag (e.g., skywalker17#17605)"
             />
           </div>
 

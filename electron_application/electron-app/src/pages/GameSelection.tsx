@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getUser } from '../utils/auth';
+import { sessionContextAPI } from '../services/api';
 import valoBG from '../../assets/valorant-bg.jpg';
 import lolBG from '../../assets/lol-bg.jpg';
 
@@ -20,7 +21,8 @@ const GameSelection: React.FC = () => {
   const [isValidating, setIsValidating] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const navigate = useNavigate();
-  const user = getUser();
+  const user = useMemo(() => getUser(), []);
+  const [searchParams] = useSearchParams();
 
   // Read Riot API key from the environment once (used for fetch headers).
   const API_KEY = import.meta.env.RIOT_API_KEY as string;
@@ -31,6 +33,37 @@ const GameSelection: React.FC = () => {
   const handleGameClick = (game: 'valorant' | 'lol') => {
     setActiveGame(game);
     setErrorMessage('');
+  };
+
+  useEffect(() => {
+    if (user?.riot_id) {
+      setValorantId(user.riot_id);
+      setLolId(user.riot_id);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const targetGame = searchParams.get('game');
+    if (targetGame === 'valorant' || targetGame === 'lol') {
+      setActiveGame(targetGame);
+      setErrorMessage('');
+    }
+  }, [searchParams]);
+
+  const persistSessionContext = async (game: 'valorant' | 'lol', riotId: string) => {
+    try {
+      if (user) {
+        const updatedUser = await authAPI.updateRiotId(riotId);
+        setUser(updatedUser);
+      }
+      await sessionContextAPI.saveContext({
+        riot_id: riotId,
+        game,
+        user_id: user?.id,
+      });
+    } catch (err) {
+      console.warn('Failed to persist session context:', err);
+    }
   };
 
   /**
@@ -113,16 +146,26 @@ const GameSelection: React.FC = () => {
     try {
       const result = await validateRiotId(valorantId, 'europe');
 
+      const puuid = result.data?.puuid;
+      if (!puuid) throw new Error('Unable to resolve PUUID');
+
       if (result.success && user) {
         localStorage.setItem(`user_${user.id}_lastGame`, 'valorant');
+        // Persist user riot_id to backend if logged in
+        try {
+          await sessionContextAPI.saveContext({ riot_id: valorantId, game: 'valorant', user_id: user.id });
+        } catch (e) {
+          // Non-fatal
+          console.warn('Failed to persist session context:', e);
+        }
       }
 
+      sessionStorage.setItem('current_valorant_riot_id', valorantId);
+      sessionStorage.setItem('current_valorant_puuid', puuid);
+      await persistSessionContext('valorant', valorantId);
+
       const role = user?.role || 'player';
-      navigate(
-        `/${role}/valorant-dashboard?user=${encodeURIComponent(
-          valorantId
-        )}&puuid=${result.data.puuid}`
-      );
+      navigate(`/${role}/valorant-dashboard?user=${encodeURIComponent(valorantId)}&puuid=${puuid}`);
     } catch (err) {
       if (err instanceof Error) setErrorMessage(err.message);
     } finally {
@@ -143,14 +186,24 @@ const GameSelection: React.FC = () => {
     try {
       const result = await validateRiotId(lolId, 'europe');
 
+      const puuid = result.data?.puuid;
+      if (!puuid) throw new Error('Unable to resolve PUUID');
+
       if (result.success && user) {
         localStorage.setItem(`user_${user.id}_lastGame`, 'lol');
+        try {
+          await sessionContextAPI.saveContext({ riot_id: lolId, game: 'league_of_legends', user_id: user.id });
+        } catch (e) {
+          console.warn('Failed to persist session context:', e);
+        }
       }
 
+      sessionStorage.setItem('current_lol_riot_id', lolId);
+      sessionStorage.setItem('current_lol_puuid', puuid);
+      await persistSessionContext('lol', lolId);
+
       const role = user?.role || 'player';
-      navigate(
-        `/${role}/lol-dashboard?user=${encodeURIComponent(lolId)}&puuid=${result.data.puuid}`
-      );
+      navigate(`/${role}/lol-dashboard?user=${encodeURIComponent(lolId)}&puuid=${puuid}`);
     } catch (err) {
       if (err instanceof Error) setErrorMessage(err.message);
     } finally {

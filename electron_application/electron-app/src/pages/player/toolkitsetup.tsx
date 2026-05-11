@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getUser } from '../../utils/auth';
 import { toolkitAPI } from '../../services/api';
-import {API_BASE_URL} from '../../services/api';
+import { API_BASE_URL } from '../../services/api';
 /**
  * ToolkitSetup
  * ------------
@@ -18,10 +18,12 @@ import {API_BASE_URL} from '../../services/api';
  */
 const ToolkitSetup: React.FC = () => {
   // Existing state
-  const [obsInstalled, setObsInstalled] = useState(true);
-  const [setupComplete, setSetupComplete] = useState(true);
   const [toolkitRunning, setToolkitRunning] = useState(false);
-  const [obsConnected, setObsConnected] = useState(true);
+  const [sessionActive, setSessionActive] = useState(false);
+  const [obsConnected, _setObsConnected] = useState(true);
+  const [obsAppRunning, setObsAppRunning] = useState(false);
+  const [tobiiAppRunning, setTobiiAppRunning] = useState(false);
+  const [toolkitAppRunning, setToolkitAppRunningState] = useState(false);
   const user = getUser();
   const [gameDetected, setGameDetected] = useState('Not Selected');
   const [sessionTime, setSessionTime] = useState(0);
@@ -43,12 +45,41 @@ const ToolkitSetup: React.FC = () => {
   const [fullTobiiPath, setFullTobiiPath] = useState<string>('');
   const [tobiiError, setTobiiError] = useState<string>('');
 
-  // DATA DIRECTORY STATE
-  const [dataDirectory, setDataDirectory] = useState<string>('');
-  const [fullDataDirectory, setFullDataDirectory] = useState<string>('');
-  const [dataError, setDataError] = useState<string>('');
+  // DATA DIRECTORY STATE (we only need setters in this component)
+  const [, setDataDirectory] = useState<string>('');
+  const [, setFullDataDirectory] = useState<string>('');
+  const [, setDataError] = useState<string>('');
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const statusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const pollAppStatuses = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/toolkit/apps-status`);
+      if (!res.ok) throw new Error('Failed to fetch app statuses');
+      const data = await res.json();
+      setObsAppRunning(Boolean(data.obs_running));
+      setTobiiAppRunning(Boolean(data.tobii_running));
+      setToolkitAppRunningState(Boolean(data.toolkit_running));
+    } catch (err) {
+      console.warn('pollAppStatuses error', err);
+      setObsAppRunning(false);
+      setTobiiAppRunning(false);
+      setToolkitAppRunningState(false);
+    }
+  };
+
+  const startStatusPolling = () => {
+    if (statusPollRef.current) return;
+    statusPollRef.current = setInterval(() => void pollAppStatuses(), 2000);
+  };
+
+  const stopStatusPolling = () => {
+    if (statusPollRef.current) {
+      clearInterval(statusPollRef.current);
+      statusPollRef.current = null;
+    }
+  };
 
   // Load toolkit configuration from database on mount
   // This reads any previously saved paths and sets local and persisted
@@ -111,27 +142,7 @@ const ToolkitSetup: React.FC = () => {
     }
   };
 
-  // Open file selection for the toolkit main file (via backend file dialog)
-  const handleBrowseClick = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/toolkit/select-file`);
-      const data = await response.json();
-
-      if (data.success && data.filePath) {
-        setFullToolkitPath(data.filePath);
-        const fileName = data.filePath.split('\\').pop() || data.filePath.split('/').pop() || '';
-        setToolkitPath(fileName);
-        setPathError('');
-
-        // Save to database
-        await saveConfigToDatabase({ toolkit_path: data.filePath });
-      } else if (!data.success && data.message) {
-      }
-    } catch (error) {
-      console.error('Error opening file dialog:', error);
-      setPathError('Could not open file dialog. Make sure the backend server is running.');
-    }
-  };
+  // (file selection handled by handleDataDirectoryBrowseClick)
 
   // Launch the Tobii Eye Tracker Manager for manual recalibration
   // Backend will attempt to open the provided Tobii path.
@@ -158,6 +169,35 @@ const ToolkitSetup: React.FC = () => {
     } catch (error) {
       console.error('Error opening Tobii for recalibration:', error);
       setTobiiError('Could not connect to backend. Make sure FastAPI server is running on port 8000');
+    }
+  };
+
+  // Start / Stop recording session (separate from starting the toolkit process)
+  const handleStartSession = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/toolkit/start-session`, { method: 'POST' });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setSessionActive(true);
+      } else {
+        console.warn('Failed to start session', data);
+      }
+    } catch (error) {
+      console.error('Error starting session:', error);
+    }
+  };
+
+  const handleStopSession = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/toolkit/stop-session`, { method: 'POST' });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setSessionActive(false);
+      } else {
+        console.warn('Failed to stop session', data);
+      }
+    } catch (error) {
+      console.error('Error stopping session:', error);
     }
   };
 
@@ -360,32 +400,7 @@ const ToolkitSetup: React.FC = () => {
     }
   };
 
-  const handleDataDirectoryInput = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const path = event.target.value.replace(/"/g, '');
-    setFullToolkitPath(path);
-    if (path.endsWith('.bat')) {
-      setToolkitPath(path.split('\\').pop() || path.split('/').pop() || path);
-      setPathError('');
-
-      // AUTO-DETECT DATA DIRECTORY for manual input too
-      const pathParts = path.split(/[\\\/]/);
-      pathParts.pop(); // Remove filename
-      const baseDirectory = pathParts.join('/');
-      const dataDirectoryPath = `${baseDirectory}/data`;
-
-      setFullDataDirectory(dataDirectoryPath);
-      localStorage.setItem('toolkit_data_directory', dataDirectoryPath);
-      setDataDirectory('data');
-      setDataError('');
-
-      // Save both toolkit path and data directory to database
-      saveConfigToDatabase({
-        toolkit_path: path,
-        data_directory: dataDirectoryPath
-      });
-
-    }
-  };
+  // manual input handled by handlePathInput
 
   useEffect(() => {
     if (user) {
@@ -400,6 +415,13 @@ const ToolkitSetup: React.FC = () => {
       }
     }
   }, [user]);
+
+  // start polling when component mounts
+  useEffect(() => {
+    void pollAppStatuses();
+    startStatusPolling();
+    return () => stopStatusPolling();
+  }, []);
 
   // Existing timer logic
   useEffect(() => {
@@ -676,6 +698,14 @@ const ToolkitSetup: React.FC = () => {
                 ) : (
                   'START TOOLKIT'
                 )}
+              </button>
+
+              <button
+                onClick={() => (sessionActive ? handleStopSession() : handleStartSession())}
+                disabled={!sessionActive && !(obsAppRunning && tobiiAppRunning && toolkitAppRunning)}
+                className={`w-full mb-3 py-3 rounded-lg font-black tracking-wide transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${sessionActive ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg shadow-red-500/30' : 'bg-gradient-to-r from-green-500 to-emerald-500 text-black shadow-lg shadow-green-500/30'}`}
+              >
+                {sessionActive ? 'STOP SESSION' : 'START SESSION'}
               </button>
 
               <div className="relative group">

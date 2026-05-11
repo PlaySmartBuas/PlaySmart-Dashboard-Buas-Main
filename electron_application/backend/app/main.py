@@ -28,11 +28,11 @@ from app.router import (
 from app.router import coach as coach_router
 from app.router import reaction_time as reaction_time_router
 from app.router.match_analytics import router as analytics_router
+from app.router import session_context
 import os
 
 # Import models so SQLAlchemy registers them
 from app.models.coach_config import CoachConfigDB  # noqa: F401
-
 
 # ---------- Startup Setup ----------
 
@@ -50,8 +50,6 @@ app = FastAPI(
     description="Breda Guardians Esports Analytics Platform",
     version="1.0.0",
 )
-
-
 
 
 # CORS - Read from environment
@@ -82,6 +80,7 @@ app.include_router(
 )
 app.include_router(valorant.router)
 app.include_router(analytics_router, prefix="/api/analytics", tags=["analytics"])
+app.include_router(session_context.router, prefix="/api", tags=["SessionContext"])
 
 
 # ---------- Public Endpoints ----------
